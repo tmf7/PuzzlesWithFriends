@@ -77,7 +77,7 @@ namespace JPWF
         {
             _puzzlePieceTexture = puzzlePieceTexture;
 
-            _material.SetTexture("_MainTex", _puzzlePieceTexture);
+            _material.SetTexture("_BaseMap", _puzzlePieceTexture);
             _meshRenderer.transform.localPosition = bounds.center;
 
             // detect nearby pieces, incuding solved position pieces

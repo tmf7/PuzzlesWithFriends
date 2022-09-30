@@ -247,8 +247,8 @@
     ],
     "m_VertexContext": {
         "m_Position": {
-            "x": 327.9999694824219,
-            "y": -541.0
+            "x": 322.99993896484377,
+            "y": -549.0
         },
         "m_Blocks": [
             {
@@ -389,7 +389,7 @@
     "overrideHLSLDeclaration": false,
     "hlslDeclarationOverride": 0,
     "m_Hidden": false,
-    "m_Value": 0.7400000095367432,
+    "m_Value": 0.6800000071525574,
     "m_FloatType": 1,
     "m_RangeValues": {
         "x": 0.0,
@@ -892,12 +892,12 @@
     "m_Type": "UnityEditor.Rendering.Universal.ShaderGraph.UniversalTarget",
     "m_ObjectId": "462b961b42b94b359f2b6242d6379cc3",
     "m_ActiveSubTarget": {
-        "m_Id": "ee77445b1646412297f447fe211dcda2"
+        "m_Id": "cecb1bdce6244c989265c9d4bf2e20c3"
     },
     "m_SurfaceType": 0,
     "m_AlphaMode": 0,
     "m_TwoSided": false,
-    "m_AlphaClip": false,
+    "m_AlphaClip": true,
     "m_CustomEditorGUI": ""
 }
 
@@ -1062,10 +1062,10 @@
         "m_Expanded": true,
         "m_Position": {
             "serializedVersion": "2",
-            "x": 0.0,
-            "y": 0.0,
-            "width": 0.0,
-            "height": 0.0
+            "x": 641.0,
+            "y": -449.0000305175781,
+            "width": 199.99998474121095,
+            "height": 41.0
         }
     },
     "m_Slots": [
@@ -1468,10 +1468,10 @@
         "m_Expanded": true,
         "m_Position": {
             "serializedVersion": "2",
-            "x": 0.0,
-            "y": 0.0,
-            "width": 0.0,
-            "height": 0.0
+            "x": 455.0000915527344,
+            "y": -689.0,
+            "width": 199.99998474121095,
+            "height": 41.0
         }
     },
     "m_Slots": [
@@ -1595,6 +1595,12 @@
     "m_Value": 0.0,
     "m_DefaultValue": 0.0,
     "m_Labels": []
+}
+
+{
+    "m_SGVersion": 0,
+    "m_Type": "UnityEditor.Rendering.Universal.ShaderGraph.UniversalSpriteUnlitSubTarget",
+    "m_ObjectId": "cecb1bdce6244c989265c9d4bf2e20c3"
 }
 
 {
@@ -1734,9 +1740,9 @@
         "m_Expanded": true,
         "m_Position": {
             "serializedVersion": "2",
-            "x": -109.99993896484375,
-            "y": -68.00003051757813,
-            "width": 208.00001525878907,
+            "x": -46.0,
+            "y": -241.00001525878907,
+            "width": 208.0,
             "height": 278.0
         }
     },
@@ -1907,12 +1913,6 @@
         "m_Guid": ""
     },
     "m_DefaultType": 0
-}
-
-{
-    "m_SGVersion": 0,
-    "m_Type": "UnityEditor.Rendering.Universal.ShaderGraph.UniversalSpriteUnlitSubTarget",
-    "m_ObjectId": "ee77445b1646412297f447fe211dcda2"
 }
 
 {
