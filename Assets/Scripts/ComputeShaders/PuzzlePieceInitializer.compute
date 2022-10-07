@@ -1,14 +1,14 @@
 ﻿#pragma kernel InitBoundingBoxBuffer
 #pragma kernel FindBoundingBox
-#pragma kernel CopyTexture
 
 // count set up for one thread per pixel
 // on a POT rendertexture a multiple of 32*32 in size
 #define THREAD_COUNT 32
 #define MAX_INT 2147483647
+#define FLOAT_COLOR_TOLERANCE 0.0001
 
-Texture2D<float4> shaderOutputTexture; // read-only
-RWTexture2D<float4> puzzlePieceTexture; // read-write, allocated to the size of the opaque pixel bounds
+uniform float4 colorKeyValue;
+Texture2D<float4> colorKeyMap; // read-only
 RWStructuredBuffer<uint4> boundsBuffer; // xyzw == x-min, y-min, x-max, y-max
 
 [numthreads(1, 1, 1)]
@@ -23,26 +23,14 @@ void InitBoundingBoxBuffer(uint3 id : SV_DispatchThreadID)
 [numthreads(THREAD_COUNT, THREAD_COUNT, 1)]
 void FindBoundingBox(uint3 id : SV_DispatchThreadID)
 {
-	if (shaderOutputTexture[id.xy].a > 0.0)
+	if (abs(colorKeyMap[id.xy].r - colorKeyValue.r) < FLOAT_COLOR_TOLERANCE &&
+		abs(colorKeyMap[id.xy].g - colorKeyValue.g) < FLOAT_COLOR_TOLERANCE &&
+		abs(colorKeyMap[id.xy].b - colorKeyValue.b) < FLOAT_COLOR_TOLERANCE &&
+		abs(colorKeyMap[id.xy].a - colorKeyValue.a) < FLOAT_COLOR_TOLERANCE)
 	{
 		InterlockedMin(boundsBuffer[0].x, id.x); // x-min
 		InterlockedMin(boundsBuffer[0].y, id.y); // y-min
 		InterlockedMax(boundsBuffer[0].z, id.x); // x-max
 		InterlockedMax(boundsBuffer[0].w, id.y); // y-max
-	}
-}
-
-// to ensure that each pixel maps directlyto the new texture (without stretching),
-// make the new texture a power of 2 at/above THREAD_COUNT in size
-[numthreads(THREAD_COUNT, THREAD_COUNT, 1)]
-void CopyTexture(uint3 id : SV_DispatchThreadID)
-{
-	// all opaque pixels are within the pre-calcualted bounds
-	// so no bounds checking is required
-	if (shaderOutputTexture[id.xy].a > 0.0)
-	{
-		uint2 index = id.xy - boundsBuffer[0].xy;
-
-		puzzlePieceTexture[index] = shaderOutputTexture[id.xy];
 	}
 }

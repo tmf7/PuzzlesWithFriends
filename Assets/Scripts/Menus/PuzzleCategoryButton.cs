@@ -15,7 +15,6 @@ namespace JPWF
         {
             _categoryName.text = _puzzleCategory.CategoryName;
             _categoryImage.texture = _puzzleCategory.Puzzles[0].PuzzleTexture;
-
         }
 
         public void OnPointerClick(PointerEventData eventData)

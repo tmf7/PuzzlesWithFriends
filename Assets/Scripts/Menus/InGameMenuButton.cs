@@ -21,7 +21,7 @@ namespace JPWF
 
         private void Awake()
         {
-            TransitionManager.Transition(false);
+             TransitionManager.Transition(false);
         }
 
         public void OnPointerClick(PointerEventData eventData)

@@ -4,9 +4,10 @@ using static JPWF.PuzzleInputActionMap;
 
 namespace JPWF
 {
+    //[RequireComponent(typeof(Camera))]
     public class Player : MonoBehaviour, IPlayerActions
     {
-        [SerializeField] private Camera _mainCamera;
+        private Camera _mainCamera;
 
         private PuzzleInputActionMap _inputActionMap;
 
@@ -23,6 +24,11 @@ namespace JPWF
             _inputActionMap.Player.Enable();
         }
 
+        private void Awake()
+        {
+            _mainCamera = GetComponent<Camera>();
+        }
+
         public void OnDisable()
         {
             _inputActionMap.Player.Disable();
@@ -31,12 +37,12 @@ namespace JPWF
         // TODO: detect when a Piece is clicked/dragged, and grab either the piece itself or its group to move
         // perform the move here, not in the piece, or the group
 
-
-        public void OnSubmit(InputAction.CallbackContext context) { Debug.Log("OnSubmit"); }
-        public void OnCancel(InputAction.CallbackContext context) { Debug.Log("OnCancel"); }
-        public void OnPoint(InputAction.CallbackContext context) { Debug.Log("OnPoint"); }
-        public void OnClick(InputAction.CallbackContext context) { Debug.Log("OnClick"); }
-        public void OnTrackedDeviceOrientation(InputAction.CallbackContext context) { Debug.Log("OnTrackedDeviceOrientation"); }
+        public void OnSubmit(InputAction.CallbackContext context) {/* if (context.performed)*/ Debug.Log("OnSubmit");}
+        public void OnCancel(InputAction.CallbackContext context) {/* if (context.performed)*/ Debug.Log("OnCancel"); } // TODO: this fires when the back button/escape is pressed
+        public void OnPress(InputAction.CallbackContext context) { /*if (context.performed)*/ Debug.Log("OnPress"); }
+        public void OnPoint(InputAction.CallbackContext context) { /*if (context.performed)*/ Debug.Log("OnPoint"); } // this fires whenever the cursor moves on the screen (drag or not)
+        public void OnClick(InputAction.CallbackContext context) { /*if (context.performed)*/ Debug.Log("OnClick"); }
+        public void OnTrackedDeviceOrientation(InputAction.CallbackContext context) { /*if (context.performed)*/ Debug.Log("OnTrackedDeviceOrientation"); }
 
     }
 }

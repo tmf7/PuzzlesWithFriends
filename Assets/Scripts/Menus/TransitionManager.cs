@@ -17,8 +17,8 @@ namespace JPWF
         private Material _transitionMaterial;
         private Coroutine _transitionCoroutine;
 
-        private int MainTexProperty = Shader.PropertyToID("_MainTex");
-        private int CutoffProperty = Shader.PropertyToID("_Cutoff");
+        private readonly int _mainTexProperty = Shader.PropertyToID("_MainTex");
+        private readonly int _cutoffProperty = Shader.PropertyToID("_Cutoff");
 
         private const float MIN_CUTOFF = 0.0f;
         private const float MAX_CUTOFF = 1.1f;
@@ -32,7 +32,7 @@ namespace JPWF
 
                 _transitionCanvas = GetComponent<Canvas>();
                 _transitionMaterial = _transitionImage.material;
-                _transitionMaterial.SetFloat(CutoffProperty, MIN_CUTOFF);
+                _transitionMaterial.SetFloat(_cutoffProperty, MIN_CUTOFF);
                 _transitionCanvas.enabled = false;
             }
             else
@@ -50,7 +50,8 @@ namespace JPWF
         {
             if (transitionTexture != null)
             {
-                _instance._transitionMaterial.SetTexture(_instance.MainTexProperty, transitionTexture);
+                _instance._transitionMaterial.SetTexture(_instance._mainTexProperty, transitionTexture);
+                _instance._transitionImage.SetMaterialDirty();
             }
 
             if (_instance._transitionCoroutine != null)
@@ -64,19 +65,21 @@ namespace JPWF
 
         private IEnumerator TransitionCoroutine(bool to, Action complete)
         {
-            float cutoff = _transitionMaterial.GetFloat(CutoffProperty);
+            float cutoff = _transitionMaterial.GetFloat(_cutoffProperty);
             float target = to ? MAX_CUTOFF : MIN_CUTOFF;
 
             _transitionCanvas.enabled = true;
 
-            while (Mathf.Abs(_transitionMaterial.GetFloat(CutoffProperty) - target) > 0.0f)
+            while (Mathf.Abs(_transitionMaterial.GetFloat(_cutoffProperty) - target) > 0.0f)
             {
                 cutoff = Mathf.MoveTowards(cutoff, target, _transitionSpeed * Time.deltaTime);
-                _transitionMaterial.SetFloat(CutoffProperty, cutoff);
+                _transitionMaterial.SetFloat(_cutoffProperty, cutoff);
+                _instance._transitionImage.SetMaterialDirty();
                 yield return null;
             }
 
-            _transitionMaterial.SetFloat(CutoffProperty, target);
+            _transitionMaterial.SetFloat(_cutoffProperty, target);
+            _instance._transitionImage.SetMaterialDirty();
             _transitionCanvas.enabled = to;
             _transitionCoroutine = null;
             complete?.Invoke();

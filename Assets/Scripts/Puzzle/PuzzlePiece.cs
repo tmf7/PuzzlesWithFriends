@@ -1,146 +1,171 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
 namespace JPWF
 {
-    [RequireComponent(typeof(Rigidbody2D))]
-    public class PuzzlePiece : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IDragHandler, IPointerClickHandler
+    [RequireComponent(typeof(MeshRenderer), typeof(BoxCollider2D))]
+    public class PuzzlePiece : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerClickHandler
     {
-        public struct SolutionPose
+        /// <summary>
+        /// Describes a neighboring piece in the constructed puzzle, 
+        /// and this piece's localspace offset from it.
+        /// </summary>
+        private struct SolutionPose
         {
             // all puzzles are initialized in a solved state, with pieces at 0 rotation about the z-axis
-            // and as such all pieces are in a solved rotation if at 0 rotation (puzzle pieces' rotations are scrambled after setup)
-            // therefore the only relevant explicit data is the local offset to a solution neighbor
-            public PuzzlePiece piece;
+            // and 0 rotation relative to their neighbors, so the local rotation offset must always be zero.
+            public PuzzlePiece self;
+            public PuzzlePiece neighbor;
             public Vector2 localOffset;
-            public FixedJoint2D solvedJoint;
 
-            public const float SOLUTION_ROTATION = 0.0f;
-            public const float SOLVE_TOLERANCE = 0.02f; // TODO: scale this by screen size?
+            public const float SOLVE_TOLERANCE = 0.1f; // TODO: scale this by screen size?
 
             /// <summary> 
             /// Returns true this pose hasn't already been solved, and this piece is close enough to being solved. 
             /// Returns false otherwise. 
             /// </summary>
-            public bool ReadyToSolve(Vector3 worldPosition)
+            public bool ReadyToSolve()
             {
-                if (solvedJoint != null)
+                // already solved for this group
+                if (self.m_puzzlePieceGroup != null && neighbor.m_puzzlePieceGroup == self.m_puzzlePieceGroup)
                 {
                     return false;
                 }
 
-                var currentOffset = (Vector2)piece.transform.InverseTransformPoint(worldPosition);
-                
+                var currentOffset = (Vector2)neighbor.transform.InverseTransformPoint(self.transform.position);
+
                 return (Mathf.Abs(localOffset.x - currentOffset.x) <= SOLVE_TOLERANCE &&
-                        Mathf.Abs(localOffset.y - currentOffset.y) <= SOLVE_TOLERANCE);
+                        Mathf.Abs(localOffset.y - currentOffset.y) <= SOLVE_TOLERANCE) &&
+                        Mathf.Abs(neighbor.RigidBody.rotation - self.RigidBody.rotation) % 360.0f <= SOLVE_TOLERANCE;
             }
         }
 
-        // must be an immediate child to allow local offset that accounts for texture size
-        [SerializeField] private MeshRenderer _meshRenderer; 
+        private PuzzlePieceGroup m_puzzlePieceGroup = null;
+        private Camera m_mainCamera;
+        private MeshRenderer m_meshRenderer;
+        private Rigidbody2D m_rigidBody;
+        private BoxCollider2D m_touchCollider; // detect nearby pieces, incuding solved position pieces
+        private SolutionPose[] m_solutionPoses = null;
+        private List<PuzzlePiece> m_currentTouchingPieces = new List<PuzzlePiece>();
+        private float m_unstackedDepth; // not overlapping any pieces
+        private Vector3 m_initialTouchOffset;
+        private float m_targetRotation;
+        private bool m_isDragged = false;
+        private bool m_isRotating = false;
 
-        private Material _material;
-        private RenderTexture _puzzlePieceTexture;
-        private Rigidbody2D _rigidBody;
-        private BoxCollider2D _touchCollider;
-        private BoxCollider2D _pushCollider;
-        private SolutionPose[] _solutionPoses = null;
-        private List<PuzzlePiece> _currentTouchingPieces = new List<PuzzlePiece>();
-        private int _unstackedRenderQueue; // not overlapping any pieces
-        private bool _isDragged = false;
-        private bool _isRotating = false;
-        private float _targetRotation;
+        private static Collider2D[] _tempNeighborColliders = new Collider2D[8];
 
-        private static Collider2D[] _neighborColliders = new Collider2D[8];
-        private static readonly Vector2 DRAG_POSITION_OFFSET = Vector2.up * 0.7f;
+        public const float ROTATION_INCREMENT = 90.0f;
+        public const float ROTATION_SPEED = 450.0f;
+        public const float ROTATION_TOLERANCE = 0.001f;
 
-        private const float ROTATION_INCREMENT = 90.0f;
-        private const float ROTATION_SPEED = 450.0f;
-        private const float ROTATION_TOLERANCE = 0.001f;
-        
-        private void Awake()
+        private const float PIECE_THICKNESS = 0.01f;
+
+        /// <summary> 
+        /// Get returns true if this piece or its PuzzlePieceGroup is being dragged. 
+        /// Set only configures the local drag state.
+        /// </summary>
+        public bool IsDragged 
         {
-            _rigidBody = GetComponent<Rigidbody2D>();
-            _rigidBody.gravityScale = 0.0f;
-            _rigidBody.drag = 10.0f;
-            _rigidBody.angularDrag = 10.0f;
-            _rigidBody.useFullKinematicContacts = true;
-            _rigidBody.isKinematic = false;
-
-            _material = _meshRenderer.material;
-            _unstackedRenderQueue = _material.renderQueue;
+            get => m_puzzlePieceGroup == null ? m_isDragged : m_puzzlePieceGroup.IsDragged;
+            set => m_isDragged = value;
         }
 
-        public void Init(RenderTexture puzzlePieceTexture, Bounds bounds)
+        /// <summary> 
+        /// Get returns true if this piece or its <see cref="PuzzlePieceGroup"/> is being rotated. 
+        /// Set only configures the local rotating state.
+        /// </summary>
+        public bool IsRotating
         {
-            _puzzlePieceTexture = puzzlePieceTexture;
+            get => m_puzzlePieceGroup == null ? m_isRotating : m_puzzlePieceGroup.IsRotating;
+            set => m_isRotating = value;
+        }
 
-            _material.SetTexture("_BaseMap", _puzzlePieceTexture);
-            _meshRenderer.transform.localPosition = bounds.center;
+        /// <summary> 
+        /// Rigibody of the piece, or the group if this belongs to one. 
+        /// NOTE: this piece's Rigidbody is destroyed when joining a <see cref="PuzzlePieceGroup"/>. 
+        /// </summary>
+        private Rigidbody2D RigidBody => m_puzzlePieceGroup == null ? m_rigidBody : m_puzzlePieceGroup.RigidBody;
 
-            // detect nearby pieces, incuding solved position pieces
-            _touchCollider = gameObject.AddComponent<BoxCollider2D>();
-            _touchCollider.offset = Vector2.zero;
-            _touchCollider.size = bounds.size;
-            _touchCollider.isTrigger = true;
+        /// <summary>
+        /// Sets the z-position of this piece or its <see cref="PuzzlePieceGroup"/> to affect
+        /// render order and raycast priority.
+        /// </summary>
+        private float StackDepth
+        {
+            get => m_puzzlePieceGroup == null ? transform.position.z : m_puzzlePieceGroup.StackDepth;
+            set
+            {
+                if (m_puzzlePieceGroup == null)
+                {
+                    transform.position = new Vector3(transform.position.x, transform.position.y, value);
+                }
+                else
+                {
+                    m_puzzlePieceGroup.StackDepth = value;
+                }
+            }
+        }
 
-            // collide with play area walls
-            _pushCollider = _meshRenderer.gameObject.AddComponent<BoxCollider2D>();
-            _pushCollider.offset = -bounds.center;
-            _pushCollider.size = bounds.size;
-            _pushCollider.isTrigger = false;
+        private void Awake()
+        {
+            m_meshRenderer = GetComponent<MeshRenderer>();
+            m_rigidBody = GetComponent<Rigidbody2D>();
+            m_touchCollider = GetComponent<BoxCollider2D>();
 
+            m_unstackedDepth = StackDepth;
+            m_touchCollider.offset = Vector2.zero;
+            m_touchCollider.isTrigger = true;
+            m_rigidBody.useFullKinematicContacts = true;
+            m_rigidBody.isKinematic = true;
+        }
 
-            // TODO: 
-            // (1) perform _touchCollider.OverlapCollider to check neighbors before the next physics update
-            // (2) calculate relative neihbor solve positions so they can check if they are close
-            // (3) get this piece's solved positions from all its neighbors (const reference)
-            // (4) if released within a position & rotation tolerance of a solved position (or many) chose the closest one
-            // ...ignore collisions...possibly create a parent group object such that dragging one drags the whole group as children
-            // ...rather than relying on delayed snapping to solved positions every frame
+        /// <param name="puzzlePieceMaterial"> Draws the puzzle piece. </param>
+        /// <param name="bounds"> Trigger Collider 2D bounds to determine neighbors and interlock conditions. </param>
+        /// <param name="camera"> Camera used to translate cursor positions from screen to worldspace when moving thie piece. </param>
+        public void Init(Material puzzlePieceMaterial, Bounds bounds, Camera camera)
+        {
+            m_mainCamera = camera;
+            m_meshRenderer.material = puzzlePieceMaterial;
+            m_touchCollider.size = bounds.size;
 
             // LIVE ONLINE SESSION:
             // - if a player picks up a piece, then that piece is linked to the player in the database
             // - that player sends authoritative updates for that piece
             // - other/all players constantly query database (server-authority) for all puzzle piece positions
             // - OR the server runs a script to send connected players info only about updated pieces
-            // *** if a player shoves pieces around...who has authority?***
 
-
-            // HOW(?)
             // - POSSIBLY: when a player is online, they can send a session-code for others to join live (really just meaning that part of the DB will be jointly updated)
             // - OR: allow different people to modify the data asyncronously, if a piece is put in a solved position then that is the authority 
             // Offline => GIT-STYLE: time-stamped + player-id moves, saved in a local database, submit the database and apply versioning rules
             // Online => same moves submitted to server would imply alot more lag time instead of direct peer-to-peer updates
-            
-            // - only save when user hits save, otherwise just send up transform data
-            // - serialize to a local file (don't update the file in realtime)
             // TODO: test this by calling a local .php script to access a local database
-
-            // MAYBE:
-            // - the server database only gets updated when the player hits "save"
-            // - otherwise the puzzle piece positions are just locally synced (using HLAPI?)
         }
 
+        /// <summary> 
+        /// Called at the end of <see cref="PuzzlePieceGenerator.GeneratePuzzlePieces(PuzzleTemplateData, Texture)"/> when all pieces
+        /// are placed in their solved world poses. Performs an overlap test to determine local space neighbors and offset poses.
+        /// Solved rotation is always identity.
+        /// </summary>
         public void InitSolutionNeighborhood()
         {
             var contactFilter = new ContactFilter2D();
             contactFilter.SetLayerMask(~(2 << gameObject.layer));
             contactFilter.useTriggers = true;
 
-            int neighborCount = _touchCollider.OverlapCollider(contactFilter, _neighborColliders);
-            _solutionPoses = new SolutionPose[neighborCount];
+            int neighborCount = m_touchCollider.OverlapCollider(contactFilter, _tempNeighborColliders);
+            m_solutionPoses = new SolutionPose[neighborCount];
 
             if (neighborCount > 0)
             {
-                for (int i = 0; i < _solutionPoses.Length; ++i)
+                for (int i = 0; i < m_solutionPoses.Length; ++i)
                 {
-                    _solutionPoses[i] = new SolutionPose
+                    m_solutionPoses[i] = new SolutionPose
                     {
-                        piece = _neighborColliders[i].GetComponent<PuzzlePiece>(),
-                        localOffset = (Vector2)_neighborColliders[i].transform.InverseTransformPoint(transform.position)
+                        self = this,
+                        neighbor = _tempNeighborColliders[i].GetComponent<PuzzlePiece>(),
+                        localOffset = (Vector2)_tempNeighborColliders[i].transform.InverseTransformPoint(transform.position)
                     };
                 }
             }
@@ -148,28 +173,41 @@ namespace JPWF
 
         private void FixedUpdate()
         {
-            _currentTouchingPieces.Clear();
+            // rotate via the group once it's set
+            if (m_puzzlePieceGroup != null)
+            {
+                m_currentTouchingPieces.Clear();
+                return;
+            }
 
-            if (_isRotating)
+            bool wasRotating = IsRotating;
+
+            if (IsRotating)
             {
-                float rotation = Mathf.MoveTowards(_rigidBody.rotation, _targetRotation, ROTATION_SPEED * Time.deltaTime);
-                _rigidBody.SetRotation(rotation);
-                _isRotating = (Mathf.Abs(rotation - _targetRotation) > ROTATION_TOLERANCE);
+                float rotation = Mathf.MoveTowards(m_rigidBody.rotation, m_targetRotation, ROTATION_SPEED * Time.deltaTime);
+                m_rigidBody.SetRotation(rotation);
+                IsRotating = (Mathf.Abs(rotation - m_targetRotation) > ROTATION_TOLERANCE);
             }
-            else
+
+            if (wasRotating && !IsRotating)
             {
+                // FIXME: if rotating into a solved position, then the rotation is still a bit wonky
+                // FIXME: if moving a GROUP into an individual piece, then the translation can sometimes be wonky too
                 // snap to orient along the current facing direction
-                _rigidBody.SetRotation(Mathf.RoundToInt(_rigidBody.rotation / ROTATION_INCREMENT) * ROTATION_INCREMENT);
+                m_rigidBody.SetRotation(Mathf.RoundToInt(m_rigidBody.rotation / ROTATION_INCREMENT) * ROTATION_INCREMENT);
+                CheckSolutionPoses();
             }
+
+            m_currentTouchingPieces.Clear();
         }
 
         private void OnTriggerStay2D(Collider2D collision)
         {
             var hitPiece = collision.GetComponent<PuzzlePiece>();
 
-            if (hitPiece != null && !_currentTouchingPieces.Contains(hitPiece))
+            if (hitPiece != null && !m_currentTouchingPieces.Contains(hitPiece))
             {
-                _currentTouchingPieces.Add(hitPiece);
+                m_currentTouchingPieces.Add(hitPiece);
             }
         }
 
@@ -178,93 +216,170 @@ namespace JPWF
             UpdateStackOrder();
         }
 
-        // initial stack order 2450, up to 5000 max (will accomodata a 2550 piece stack)
-        // TODO: discourage excessive stacking with push-collision above a max stack height (like 5 or 6) 
+        /// <summary> 
+        /// Ensure the most recently interacted-with piece/group is the nearest 
+        /// visible to the camera and the first hit by any physics raycasts.
+        /// </summary>
         private void UpdateStackOrder()
         {
-            if (_isDragged)
+            if (IsDragged || IsRotating)
             {
-                int stackRenderQueue = _unstackedRenderQueue;
-                for (int i = 0; i < _currentTouchingPieces.Count; ++i)
+                float stackDepth = m_unstackedDepth;
+                for (int i = 0; i < m_currentTouchingPieces.Count; ++i)
                 {
-                    if (_currentTouchingPieces[i]._material.renderQueue >= stackRenderQueue)
+                    if (m_currentTouchingPieces[i].StackDepth <= stackDepth)
                     {
-                        stackRenderQueue = _currentTouchingPieces[i]._material.renderQueue + 1;
+                        stackDepth = m_currentTouchingPieces[i].StackDepth - PIECE_THICKNESS;
                     }
                 }
 
-                _material.renderQueue = stackRenderQueue;
+                StackDepth = stackDepth;
             }
         }
 
-        private void InterlockPieces(ref SolutionPose selfSolutionPose)
+        /// <summary>
+        /// Interlocks pieces in a near-engough solution pose.
+        /// Checked at the end of every user-initiated translation and rotation.
+        /// </summary>
+        public void CheckSolutionPoses()
         {
-            // TODO: check that the pieces arent already interlocked
-            // TODO: snap this transform to the solved position
-            // TODO: add both pieces to a new SolutionGroup if neither is already part of a SolutionGroup,
-            // otherwise add this individual piece to the other's SolutionGroup
-            // TODO: SolutionGroup will have its own rigidbody (leveraging the individual piece colliders),
-            // and will remove each piece's rigidbody as it joins
-            _rigidBody.position = selfSolutionPose.piece._rigidBody.position + selfSolutionPose.localOffset;
-
-            var solvedJoint = gameObject.AddComponent<FixedJoint2D>();
-            solvedJoint.connectedBody = selfSolutionPose.piece._rigidBody;
-
-            selfSolutionPose.solvedJoint = solvedJoint;
-            var otherSolutionPose = selfSolutionPose.piece._solutionPoses.First(solutionPose => solutionPose.piece == this);
-            otherSolutionPose.solvedJoint = solvedJoint;
-        }
-
-        private void CheckSolutionPoses()
-        {
-            if (_rigidBody.rotation == SolutionPose.SOLUTION_ROTATION &&
-                _currentTouchingPieces.Count > 0)
+            if (m_currentTouchingPieces.Count > 0)
             {
-                for (int i = 0; i < _solutionPoses.Length; ++i)
+                for (int i = 0; i < m_solutionPoses.Length; ++i)
                 {
-                    if (_currentTouchingPieces.Contains(_solutionPoses[i].piece) &&
-                        _solutionPoses[i].ReadyToSolve(transform.position))
+                    // The migragion of their RigidBody2D to the common parent
+                    // ensures _currentTouchingPieces never contains siblings of a
+                    // PuzzlePieceGroup so that doesn't need to be checked here
+                    if (m_currentTouchingPieces.Contains(m_solutionPoses[i].neighbor) &&
+                        m_solutionPoses[i].ReadyToSolve())
                     {
                         // TODO: particle system and snap sound
-                       // InterlockPieces(ref _solutionPoses[i]);
+
+                        // FIXME: a shimmer effect should occur at every merge point
+                        // ie: if two vertical groups of 3 pieces merge, then there should be 3 shimmers at once
+                        // PROBLEM: although the group is performing a CheckSolutionPoses for ALL pieces in its control
+                        // the first of its pieces that see it'll merge will cascade SetGroup for all its fellow members
+                        // ...THEN ReadyToSolve will return false for the other members and there won't be a satisfying cascade of shimmer along the merge line
+                        // SOLUTION: make an entire piece shimmer as it is added to a group, and delay the start of each shimmer by a few frames
+                        // ...in a nearest-neighbor way...? to a limit?
+
+                        // PROBLEM(?): adding one piece in the middle of a group...who shimmers? probably both the piece and the group...to a limit
+                        InterlockPieces(ref m_solutionPoses[i]);
                     }
                 }
             }
         }
 
-        private void OnDestroy()
+        public void SetGroup(PuzzlePieceGroup puzzlePieceGroup)
         {
-            _puzzlePieceTexture.Release();
-            _puzzlePieceTexture = null;
+            m_puzzlePieceGroup = puzzlePieceGroup;
+            m_puzzlePieceGroup.AddPiece(this);
         }
 
-        // TODO: disable all event inputs on an individual piece once its part of a group
-        // use the group inputs instead
+        /// <summary>
+        /// Adds one or both pieces to a <see cref="PuzzlePieceGroup"/> after snapping
+        /// the piece or group into position.
+        /// </summary>
+        private void InterlockPieces(ref SolutionPose solutionPose)
+        {
+            Vector3 pieceSnapWorldPosition = (solutionPose.neighbor.transform.position + (Vector3)solutionPose.localOffset);
+
+            if (m_puzzlePieceGroup == null)
+            {
+                // snap the individual piece into position
+                transform.position = pieceSnapWorldPosition;
+
+                if (solutionPose.neighbor.m_puzzlePieceGroup == null)
+                {
+                    var newPuzzlePieceGroup = new GameObject($"{nameof(PuzzlePieceGroup)} ({PuzzlePieceGroup.GroupNumber})").AddComponent<PuzzlePieceGroup>();
+                    newPuzzlePieceGroup.transform.position = transform.position; // center on the originating piece
+
+                    SetGroup(newPuzzlePieceGroup);
+                    solutionPose.neighbor.SetGroup(newPuzzlePieceGroup);
+                }
+                else
+                {
+                    SetGroup(solutionPose.neighbor.m_puzzlePieceGroup);
+                }
+            }
+            else // _puzzlePieceGroup != null
+            {
+                // snap the entire group into position
+                m_puzzlePieceGroup.transform.position = pieceSnapWorldPosition - transform.localPosition;
+
+                if (solutionPose.neighbor.m_puzzlePieceGroup == null)
+                {
+                    solutionPose.neighbor.SetGroup(m_puzzlePieceGroup);
+                }
+                else
+                {
+                    // FIXME: a shimmer effect should occur at every merge point
+                    // ie: if two vertical groups of 3 pieces merge, then there should be 3 shimmers at once (along the seam)
+                    m_puzzlePieceGroup.AddGroup(solutionPose.neighbor.m_puzzlePieceGroup);
+                }
+            }
+        }
+
         public void OnPointerDown(PointerEventData eventData)
         {
-
-        }
-
-        public void OnPointerUp(PointerEventData eventData)
-        {
-            _isDragged = false;
-            CheckSolutionPoses();
-        }
-
-        public void OnPointerClick(PointerEventData eventData)
-        {
-            if (!_isRotating && !_isDragged)
-            {
-                _isRotating = true;
-                _targetRotation = _rigidBody.rotation + ROTATION_INCREMENT;
-            }
+            BeginTouch(m_mainCamera.ScreenToWorldPoint(eventData.position));
         }
 
         public void OnDrag(PointerEventData eventData)
         {
-            // FIXME: don't use Camera.main here
-            _isDragged = true;
-            _rigidBody.MovePosition((Vector2)Camera.main.ScreenToWorldPoint(eventData.position));
+            Drag(m_mainCamera.ScreenToWorldPoint(eventData.position));
+        }
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            FinishTouch();
+        }
+
+        private void BeginTouch(Vector3 touchWorldPosition)
+        {
+            if (m_puzzlePieceGroup == null)
+            {
+                m_initialTouchOffset = (transform.position - touchWorldPosition) + (Vector3.forward * StackDepth);
+            }
+            else
+            {
+                m_puzzlePieceGroup.BeginTouch(touchWorldPosition);
+            }
+        }
+
+        private void Drag(Vector3 dragWorldPosition)
+        {
+            if (m_puzzlePieceGroup == null)
+            {
+                IsDragged = true;
+                transform.position = m_initialTouchOffset + dragWorldPosition + (Vector3.forward * StackDepth);
+            }
+            else
+            {
+                m_puzzlePieceGroup.Drag(dragWorldPosition);
+            }
+        }
+
+        private void FinishTouch()
+        {
+            if (m_puzzlePieceGroup == null)
+            {
+                if (!IsRotating && !IsDragged)
+                {
+                    IsRotating = true;
+                    m_targetRotation = m_rigidBody.rotation + ROTATION_INCREMENT;
+                }
+
+                if (IsDragged)
+                {
+                    IsDragged = false;
+                    CheckSolutionPoses();
+                }
+            }
+            else
+            {
+                m_puzzlePieceGroup.FinishTouch(transform.position);
+            }
         }
     }
 }
