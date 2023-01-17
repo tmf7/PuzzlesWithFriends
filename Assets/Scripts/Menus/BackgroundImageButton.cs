@@ -7,27 +7,22 @@ namespace JPWF
     [RequireComponent(typeof(Image))]
     public class BackgroundImageButton : MonoBehaviour, IPointerClickHandler
     {
-        private BackgroundSelectMenu _backgroundSelectMenu;
-        private Image _backgroundImage;
-        private Color _primaryColor; // for support UI (eg: the puzzle piece organizer strip)
+        private BackgroundSelectMenu m_backgroundSelectMenu;
+        private Image m_backgroundImage;
+        private BackgroundImageOptionData m_backgroundImageOptionData;
 
-        public Sprite Sprite => _backgroundImage.sprite;
-        public Color PrimaryColor => _primaryColor;
-
-        private void Awake()
+        public void Init(BackgroundSelectMenu owner, BackgroundImageOptionData data)
         {
-            _backgroundSelectMenu = GetComponentInParent<BackgroundSelectMenu>();
-            _backgroundImage = GetComponent<Image>();
+            m_backgroundSelectMenu = owner;
+            m_backgroundImage = GetComponent<Image>();
 
-            // account for sharply varied background colors
-            _primaryColor = Color.Lerp(_backgroundImage.sprite.texture.GetPixelBilinear(0.5f, 0.5f), 
-                                       _backgroundImage.sprite.texture.GetPixelBilinear(0.6f, 0.5f),
-                                       0.5f);
+            m_backgroundImage.sprite = data.Background;
+            m_backgroundImageOptionData = data;
         }
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            _backgroundSelectMenu.ChangeBackgroundImage(Sprite, PrimaryColor);
+            m_backgroundSelectMenu.ChangeBackgroundImage(m_backgroundImageOptionData);
         }
     }
 }

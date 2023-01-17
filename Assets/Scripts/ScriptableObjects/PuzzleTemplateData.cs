@@ -7,7 +7,7 @@ using System.Linq;
 
 namespace JPWF
 {
-    [CreateAssetMenu(fileName = "NewPuzzleTemplate", menuName = "Puzzle Template")]
+    [CreateAssetMenu(fileName = "NewPuzzleTemplate", menuName = "Data/Puzzle Template")]
     public class PuzzleTemplateData : ScriptableObject
     {
         [Tooltip("Ensure the texture is marked read-write, wrapmode clamp, point (no filter), override compression to RGBA 32bit")]

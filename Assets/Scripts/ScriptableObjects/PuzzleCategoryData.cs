@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace JPWF
 {
-    [CreateAssetMenu(fileName = "NewPuzzleCategory", menuName = "Puzzle Category")]
+    [CreateAssetMenu(fileName = "NewPuzzleCategory", menuName = "Data/Puzzle Category")]
     public class PuzzleCategoryData : ScriptableObject
     {
         [SerializeField] private string _categoryName;

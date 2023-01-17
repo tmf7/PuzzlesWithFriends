@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -19,7 +20,8 @@ namespace JPWF
             public PuzzlePiece neighbor;
             public Vector2 localOffset;
 
-            public const float SOLVE_TOLERANCE = 0.1f; // TODO: scale this by screen size?
+            /// <summary> Maximum offset allowed to still snap into a solved pose. </summary>
+            public const float SOLVE_TOLERANCE = 0.1f;
 
             /// <summary> 
             /// Returns true this pose hasn't already been solved, and this piece is close enough to being solved. 
@@ -54,7 +56,11 @@ namespace JPWF
         private bool m_isDragged = false;
         private bool m_isRotating = false;
 
-        private static Collider2D[] _tempNeighborColliders = new Collider2D[8];
+        // PERF: each puzzle piece is created in turn,
+        // so only one array need be used/updated during initialization
+        private static RaycastHit2D[] m_neighborInitRaycastCache = new RaycastHit2D[4];
+        private static List<PuzzlePiece> m_neighborInitCache = new List<PuzzlePiece>();
+        private static readonly Vector2[] m_orthoConnectionDirs = new Vector2[] { Vector2.up, Vector2.down, Vector2.right, Vector2.left };
 
         public const float ROTATION_INCREMENT = 90.0f;
         public const float ROTATION_SPEED = 450.0f;
@@ -153,21 +159,41 @@ namespace JPWF
             var contactFilter = new ContactFilter2D();
             contactFilter.SetLayerMask(~(2 << gameObject.layer));
             contactFilter.useTriggers = true;
+            float raycastDistance = m_touchCollider.size.magnitude;
+            m_neighborInitCache.Clear();
 
-            int neighborCount = m_touchCollider.OverlapCollider(contactFilter, _tempNeighborColliders);
-            m_solutionPoses = new SolutionPose[neighborCount];
+            // all puzzles are orthogonal-only connections, so only those neighbors (if any) need adding
+            for (int i = 0; i < m_orthoConnectionDirs.Length; ++i)
+            { 
+                int hitCount = Physics2D.Raycast(transform.position, m_orthoConnectionDirs[i], contactFilter, m_neighborInitRaycastCache, raycastDistance);
 
-            if (neighborCount > 0)
-            {
-                for (int i = 0; i < m_solutionPoses.Length; ++i)
+                for (int j = 0; j < hitCount; ++j)
                 {
-                    m_solutionPoses[i] = new SolutionPose
+                    if (m_neighborInitRaycastCache[j].collider == m_touchCollider)
                     {
-                        self = this,
-                        neighbor = _tempNeighborColliders[i].GetComponent<PuzzlePiece>(),
-                        localOffset = (Vector2)_tempNeighborColliders[i].transform.InverseTransformPoint(transform.position)
-                    };
+                        continue;
+                    }
+
+                    // only the first neighbor in this direction is needed
+                    var checkNeighbor = m_neighborInitRaycastCache[j].collider.GetComponent<PuzzlePiece>();
+                    if (checkNeighbor != null)
+                    {
+                        m_neighborInitCache.Add(checkNeighbor);
+                        break;
+                    }
                 }
+            }
+
+            m_solutionPoses = new SolutionPose[m_neighborInitCache.Count];
+
+            for (int i = 0; i < m_neighborInitCache.Count; ++i)
+            {
+                m_solutionPoses[i] = new SolutionPose
+                {
+                    self = this,
+                    neighbor = m_neighborInitCache[i],
+                    localOffset = (Vector2)m_neighborInitCache[i].transform.InverseTransformPoint(transform.position)
+                };
             }
         }
 
@@ -213,7 +239,10 @@ namespace JPWF
 
         private void Update()
         {
-            UpdateStackOrder();
+            if (IsDragged || IsRotating)
+            {
+                UpdateStackOrder();
+            }
         }
 
         /// <summary> 
@@ -222,19 +251,22 @@ namespace JPWF
         /// </summary>
         private void UpdateStackOrder()
         {
-            if (IsDragged || IsRotating)
-            {
-                float stackDepth = m_unstackedDepth;
-                for (int i = 0; i < m_currentTouchingPieces.Count; ++i)
-                {
-                    if (m_currentTouchingPieces[i].StackDepth <= stackDepth)
-                    {
-                        stackDepth = m_currentTouchingPieces[i].StackDepth - PIECE_THICKNESS;
-                    }
-                }
+            // FIXME: puzzle groups aren't updating their stack order enough (maybe)
+            // ... there appers to be z-fighting between free pieces and groups nearly at the same non-overlapping/base z world position
 
-                StackDepth = stackDepth;
+            // FIXME: if a free piece overlaps another free piece AND a group's piece at the same time
+            // there is a cascade that pushes the dragged free piece further and further back behind the background along the z axis
+
+            float stackDepth = m_unstackedDepth;
+            for (int i = 0; i < m_currentTouchingPieces.Count; ++i)
+            {
+                if (m_currentTouchingPieces[i].StackDepth <= stackDepth)
+                {
+                    stackDepth = m_currentTouchingPieces[i].StackDepth - PIECE_THICKNESS;
+                }
             }
+
+            StackDepth = stackDepth;
         }
 
         /// <summary>
@@ -265,6 +297,7 @@ namespace JPWF
 
                         // PROBLEM(?): adding one piece in the middle of a group...who shimmers? probably both the piece and the group...to a limit
                         InterlockPieces(ref m_solutionPoses[i]);
+                        UpdateStackOrder();
                     }
                 }
             }
@@ -313,9 +346,12 @@ namespace JPWF
                 }
                 else
                 {
+                    // FIXME: snapping into place sometimes pushes the stackOrder below nearby pieces
+                    // SOLUTION: updateStack order after interlock (regardless if rotating or dragged)
+
                     // FIXME: a shimmer effect should occur at every merge point
                     // ie: if two vertical groups of 3 pieces merge, then there should be 3 shimmers at once (along the seam)
-                    m_puzzlePieceGroup.AddGroup(solutionPose.neighbor.m_puzzlePieceGroup);
+                    solutionPose.neighbor.m_puzzlePieceGroup.AddGroup(m_puzzlePieceGroup);
                 }
             }
         }

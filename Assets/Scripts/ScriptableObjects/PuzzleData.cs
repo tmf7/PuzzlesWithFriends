@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace JPWF
 {
-    [CreateAssetMenu(fileName = "NewPuzzleData", menuName = "Puzzle Data")]
+    [CreateAssetMenu(fileName = "NewPuzzleData", menuName = "Data/Puzzle Data")]
     public class PuzzleData : ScriptableObject
     {
         [SerializeField] private Texture _puzzleTexture;

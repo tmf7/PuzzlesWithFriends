@@ -1,0 +1,16 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a853c4d2e18a7ca4ba217dc05a41ff8a, type: 3}
+  m_Name: BackgroundImageOption 17
+  m_EditorClassIdentifier: 
+  m_background: {fileID: 21300000, guid: 47815c6b0164fdd419af3b0e577d084f, type: 3}
+  m_primaryColor: {r: 0.14509805, g: 0.29411766, b: 0.32941177, a: 1}
