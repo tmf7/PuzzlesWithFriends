@@ -30,9 +30,19 @@ namespace JPWF
             TransitionManager.Transition(true, _puzzleImage.texture, complete: Test);
         }
 
+        // TODO: only begin the transition once the puzzle options have been set
         private void Test()
         { 
-            SceneManager.LoadScene(1); // FIXME: don't hardcode this with a magic number
+            var loadPuzzleAsync = SceneManager.LoadSceneAsync(1); // FIXME: don't hardcode this with a magic number
+            loadPuzzleAsync.completed += ClearTransition;
+        }
+
+        private void ClearTransition(AsyncOperation op)
+        {
+            // TODO: pass the selected image, position, etc to the PuzzlePieceGenerator
+            var puzzlePieceGenerator = GameObject.FindObjectOfType<PuzzlePieceGenerator>();
+            puzzlePieceGenerator.GeneratePuzzlePieces(puzzleTemplate: null, _puzzleImage.texture);
+            TransitionManager.Transition(false);
         }
     }
 }

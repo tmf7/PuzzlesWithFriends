@@ -7,6 +7,7 @@ using System.Linq;
 
 namespace JPWF
 {
+    /// <summary> Defines how any image can be sampled into consituent puzzle pieces </summary>
     [CreateAssetMenu(fileName = "NewPuzzleTemplate", menuName = "Data/Puzzle Template")]
     public class PuzzleTemplateData : ScriptableObject
     {
@@ -23,6 +24,9 @@ namespace JPWF
 
         /// <summary> Colors that uniquely identify each puzzle piece in the <see cref="ColorKeyMap"/>. One color per piece. (RGB: 0-255) (A: 255) </summary>
         public Vector3Int[] ColorKeyValues => _colorKeyValues;
+
+        /// <summary> The number of unique pieces this template produces </summary>
+        public int NumPieces => _colorKeyValues.Length;
 
         #region EDITOR_CODE
 #if UNITY_EDITOR
